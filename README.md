@@ -11,7 +11,14 @@ bypassing authentication, no ToS violations beyond "use my own account's web ses
 to see what the app's API actually returns."
 
 ## Status
-Not started — need the APK.
+Done (v1). See notes/findings.md for the full writeup.
+
+Short version: boarding-pass issuance runs on its own backend subdomain family
+(`*bp.ryanair.com`) that the public website was never wired to call — it's an
+infrastructure/policy split, not a client-side flag. Two legitimate app-free paths exist
+and are built by Ryanair itself: the airport self-service kiosk print API, and
+Google/Samsung Wallet — add the pass to your phone's wallet once via the app, then you
+can delete the app and the wallet pass still works (server-pushed updates, not app-pushed).
 
 ## Plan
 1. Pull the current Ryanair Android APK (device backup / APKMirror / APKPure — an
