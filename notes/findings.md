@@ -108,3 +108,32 @@ phone's wallet, then delete the app.
 3. If you'd rather not touch the app at all: use the airport's self-service check-in kiosk
    (`v1/boardingpasses/print`) where available, or Ryanair's airport desk — both still function
    without the app, subject to that airport's/fare's fee rules.
+
+## 6. Auth mechanics (for the client script in `tools/`)
+
+`MyRyanairAuthInterceptor` (com.ryanair.cheapflights.user.networking) is the real interceptor on
+every `nativeapps.ryanair.com`-family request, including boarding pass:
+- Header is `X-AUTH-TOKEN: <token>`, **not** `Authorization: Bearer`.
+- On a 401 it transparently refreshes via `LoginUsingRefreshMyRyanairToken` and retries once.
+- The server can rotate the token on any response (`X-AUTH-TOKEN` response header) — the app
+  persists whatever comes back via `SessionController.h(token)`.
+
+`res/xml/network_security_config.xml` sets no certificate pinning for any Ryanair host (the only
+pinned traffic belongs to a third-party in-flight-connectivity SDK, `com.airware.*`, unrelated to
+login/boarding pass). This means a user-installed MITM proxy (mitmproxy/HTTP Toolkit with its root
+CA added as a user CA) can observe the app's own traffic, including the real `X-AUTH-TOKEN` the app
+received at login — a user capturing their own session's header this way is reading their own
+device's own traffic, not breaking anything server-side.
+
+### Request shapes confirmed from the DTOs
+```
+POST https://mntappbp.ryanair.com/v1/boardingpass
+Header: X-AUTH-TOKEN: <token>
+Body:   {"pnr": "<PNR>", "email": "<account email>"}
+->      [BoardingPassDto, ...]   (heavily obfuscated field names; see tools/client.py)
+
+POST https://mntappbp.ryanair.com/v1/boardingpasses
+Header: X-AUTH-TOKEN: <token>
+Body:   {"customerId": "<myRyanair customer id>", "bookingsId": ["<bookingId>", ...]}
+->      [BoardingPassDto, ...]
+```
