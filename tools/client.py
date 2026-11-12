@@ -1,18 +1,8 @@
 """
-Ryanair boarding-pass API client (reverse-engineered from the Android app's own code,
-see ../notes/findings.md sections 2 and 6).
+Boarding-pass client — same REST surface as the Android app (see docs/technical-writeup.md).
 
-This does NOT bypass any technical access control the app itself doesn't also skip past
-(no cert pinning found for this host) - but it DOES bypass Ryanair's product decision to
-keep boarding-pass issuance app-exclusive. Read notes/findings.md before using it. Running
-this against your own account is between you and Ryanair's Terms of Service, not something
-this script decides for you.
-
-You supply AUTH_TOKEN yourself (see findings.md #6 for how to capture it from your own
-device's traffic). This script never asks for, stores, or transmits your Ryanair password.
-
-usage:
-    python tools/client.py --token <X-AUTH-TOKEN> --pnr ABC123 --email you@example.com
+Uses your own X-AUTH-TOKEN or browser cookie. No cert pinning on this host in the APK;
+the product gate is that ryanair.com never calls mntappbp.ryanair.com.
 """
 import argparse
 import hashlib
@@ -25,8 +15,7 @@ BASE = "https://mntappbp.ryanair.com"
 USRPROF = "https://www.ryanair.com/api/usrprof/v2/accounts"
 APP_VERSION = "3.243.0"
 
-# Stable device fingerprint matching DeviceInfoImpl.b() — SHA1(seed), hex.
-# The server uses this as a persistent device ID; any stable value works.
+# Any stable SHA1 hex works as the device ID; server doesn't validate it.
 _DEVICE_FINGERPRINT = hashlib.sha1(b"ryanair-client-00000001").hexdigest()
 
 
@@ -38,7 +27,7 @@ def refresh_token(customer_id: str, session_cookie: str) -> str:
             "Accept": "application/json, text/plain, */*",
             "client": "desktop",
             "client-version": "0.162.0 (desktop)",
-            "Cookie": session_cookie,
+            "Cookie": session_cookie.encode("latin-1", errors="replace").decode("latin-1"),
         },
     )
     try:
@@ -86,12 +75,16 @@ def get_boarding_passes_for_bookings(token: str, customer_id: str, booking_ids: 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     group = ap.add_mutually_exclusive_group(required=True)
-    group.add_argument("--token", help="X-AUTH-TOKEN from app traffic (see findings.md #6)")
+    group.add_argument("--token", help="X-AUTH-TOKEN (see docs/technical-writeup.md §6)")
     group.add_argument("--cookie", help="cookie string from browser (refreshes token automatically)")
     group.add_argument("--cookie-file", help="file containing the cookie string")
-    ap.add_argument("--customer-id", help="account ID (required with --cookie)")
+    ap.add_argument("--customer-id", help="myRyanair account ID (required with --cookie)")
     ap.add_argument("--pnr", required=True)
     ap.add_argument("--email", required=True)
+    ap.add_argument("--png", action="store_true",
+                    help="save barcode PNG named <PNR>_<DEPARR>_<DATE>.png (requires playwright)")
+    ap.add_argument("--out", metavar="FILE.png",
+                    help="override the PNG output path (implies --png)")
     args = ap.parse_args()
 
     if args.cookie or args.cookie_file:
@@ -102,4 +95,14 @@ if __name__ == "__main__":
     else:
         token = args.token
 
-    print(json.dumps(get_boarding_pass_for_flight(token, args.pnr, args.email), indent=2))
+    data = get_boarding_pass_for_flight(token, args.pnr, args.email)
+
+    if args.png or args.out:
+        import sys, pathlib
+        sys.path.insert(0, str(pathlib.Path(__file__).parent))
+        from bp_render import render_to_image
+        # API returns a list; render the first
+        bp = data[0] if isinstance(data, list) else data
+        render_to_image(bp, args.out)
+    else:
+        print(json.dumps(data, indent=2))

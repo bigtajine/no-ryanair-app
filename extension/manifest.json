@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Get My Boarding Pass",
+  "version": "1.0",
+  "description": "Fetch your Ryanair boarding pass barcode and download it as a PNG, in one click.",
+  "icons": { "128": "icon128.png" },
+  "action": { "default_icon": "icon128.png", "default_title": "Get my boarding pass" },
+  "permissions": ["storage", "downloads", "activeTab", "declarativeNetRequestWithHostAccess"],
+  "host_permissions": [
+    "https://www.ryanair.com/*",
+    "https://mntappbp.ryanair.com/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [{
+    "matches": ["https://www.ryanair.com/*"],
+    "js": ["bwip-js-min.js", "content.js"],
+    "run_at": "document_idle"
+  }],
+  "declarative_net_request": {
+    "rule_resources": [{
+      "id": "ua_rules",
+      "enabled": true,
+      "path": "rules.json"
+    }]
+  }
+}

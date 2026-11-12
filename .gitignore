@@ -2,3 +2,22 @@ apk/*.apk
 apk/*.xapk
 out/
 *.dex
+
+# personal session/PII, never commit
+cookie*.txt
+*.cookie
+token*.tmp
+*.jwt
+*.session
+.env
+[A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9][A-Z0-9]_*.png
+/*.png
+tools/*.png
+__pycache__/
+
+# Chrome-generated cruft from loading the unpacked extension locally
+extension/_metadata/
+
+# .crx signing key, never commit
+*.pem
+*.crx
