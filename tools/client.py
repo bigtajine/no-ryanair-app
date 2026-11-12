@@ -15,12 +15,40 @@ usage:
     python tools/client.py --token <X-AUTH-TOKEN> --pnr ABC123 --email you@example.com
 """
 import argparse
+import hashlib
 import json
 import sys
 import urllib.request
 import urllib.error
 
 BASE = "https://mntappbp.ryanair.com"
+USRPROF = "https://www.ryanair.com/api/usrprof/v2/accounts"
+APP_VERSION = "3.243.0"
+
+# Stable device fingerprint matching DeviceInfoImpl.b() — SHA1(seed), hex.
+# The server uses this as a persistent device ID; any stable value works.
+_DEVICE_FINGERPRINT = hashlib.sha1(b"ryanair-client-00000001").hexdigest()
+
+
+def refresh_token(customer_id: str, session_cookie: str) -> str:
+    """Exchange a web SESSION_COOKIE for a fresh X-AUTH-TOKEN."""
+    req = urllib.request.Request(
+        f"{USRPROF}/{customer_id}/sessionToken",
+        headers={
+            "Accept": "application/json, text/plain, */*",
+            "client": "desktop",
+            "client-version": "0.162.0 (desktop)",
+            "Cookie": session_cookie,
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode())
+            print(f"[refresh] got token", file=sys.stderr)
+            return data["token"]
+    except urllib.error.HTTPError as e:
+        print(f"[refresh] HTTP {e.code}: {e.read().decode(errors='replace')}", file=sys.stderr)
+        raise
 
 
 def post(path: str, token: str, body: dict) -> object:
@@ -31,9 +59,12 @@ def post(path: str, token: str, body: dict) -> object:
         headers={
             "Content-Type": "application/json",
             "X-AUTH-TOKEN": token,
-            # app identifies itself with these on every call (ApiBuildConfiguration.m()/h());
-            # harmless to include, included for fidelity with what the real app sends
-            "User-Agent": "Ryanair/3.243.0 (Android)",
+            "client": "android",
+            "client-os": "34",
+            "client-version": APP_VERSION,
+            "client-carrier-code": "FR",
+            "User-Agent": f"RyanAir/{APP_VERSION} (Android)",
+            "X-DEVICE-FINGERPRINT": _DEVICE_FINGERPRINT,
         },
     )
     try:
@@ -45,17 +76,30 @@ def post(path: str, token: str, body: dict) -> object:
 
 
 def get_boarding_pass_for_flight(token: str, pnr: str, email: str):
-    return post("/v1/boardingpass", token, {"pnr": pnr, "email": email})
+    return post("/v1/boardingpass", token, {"RecordLocator": pnr, "Email": email})
 
 
 def get_boarding_passes_for_bookings(token: str, customer_id: str, booking_ids: list):
-    return post("/v1/boardingpasses", token, {"customerId": customer_id, "bookingsId": booking_ids})
+    return post("/v1/boardingpasses", token, {"CustomerId": customer_id, "BookingIds": booking_ids})
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--token", required=True, help="your own X-AUTH-TOKEN, captured by you (see findings.md #6)")
+    group = ap.add_mutually_exclusive_group(required=True)
+    group.add_argument("--token", help="X-AUTH-TOKEN from app traffic (see findings.md #6)")
+    group.add_argument("--cookie", help="cookie string from browser (refreshes token automatically)")
+    group.add_argument("--cookie-file", help="file containing the cookie string")
+    ap.add_argument("--customer-id", help="account ID (required with --cookie)")
     ap.add_argument("--pnr", required=True)
     ap.add_argument("--email", required=True)
     args = ap.parse_args()
-    print(json.dumps(get_boarding_pass_for_flight(args.token, args.pnr, args.email), indent=2))
+
+    if args.cookie or args.cookie_file:
+        if not args.customer_id:
+            ap.error("--customer-id is required when using --cookie/--cookie-file")
+        cookie = args.cookie or open(args.cookie_file).read().strip()
+        token = refresh_token(args.customer_id, cookie)
+    else:
+        token = args.token
+
+    print(json.dumps(get_boarding_pass_for_flight(token, args.pnr, args.email), indent=2))

@@ -128,12 +128,19 @@ device's own traffic, not breaking anything server-side.
 ### Request shapes confirmed from the DTOs
 ```
 POST https://mntappbp.ryanair.com/v1/boardingpass
-Header: X-AUTH-TOKEN: <token>
-Body:   {"pnr": "<PNR>", "email": "<account email>"}
-->      [BoardingPassDto, ...]   (heavily obfuscated field names; see tools/client.py)
+Headers: X-AUTH-TOKEN: <token>
+         client: android
+         client-os: <android sdk int, e.g. 34>
+         client-version: 3.243.0
+         client-carrier-code: FR
+         X-DEVICE-FINGERPRINT: <SHA1 hex, stable per device — any value works>
+Body:   {"RecordLocator": "<PNR>", "Email": "<account email>"}
+->      [BoardingPassDto, ...]   (see tools/client.py)
 
 POST https://mntappbp.ryanair.com/v1/boardingpasses
-Header: X-AUTH-TOKEN: <token>
-Body:   {"customerId": "<myRyanair customer id>", "bookingsId": ["<bookingId>", ...]}
+Headers: (same as above)
+Body:   {"CustomerId": "<myRyanair customer id>", "BookingIds": ["<bookingId>", ...]}
 ->      [BoardingPassDto, ...]
 ```
+
+Field names are PascalCase (from kotlinx.serialization descriptors), NOT camelCase.
