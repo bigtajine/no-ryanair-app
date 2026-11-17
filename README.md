@@ -1,85 +1,109 @@
 # no-ryanair-app
 
-Ryanair stopped issuing boarding passes outside its own app in November 2025. I wanted to know whether that was actually enforced by the system that generates the pass, or whether it was just a rule the app's interface imposes on top of a server that doesn't care. It's the second one. The boarding pass is ordinary data sitting behind an API call, and that call works fine from a browser session, a Python script, or a Chrome extension with no Ryanair app installed anywhere in the chain.
+Fetch the boarding pass Ryanair says only exists inside its app. It is an ordinary API response behind your ordinary login, and you can pull it with no app installed.
 
-This repository documents how I reached that conclusion and ships the tools that prove it: a Chrome extension that turns a logged-in Manage Trip page into a one-click PNG of your boarding pass, and a Python client that does the same from the command line. Both use your own account and your own session. Neither bypasses a login, a password, or anything Ryanair would call a security control.
+> ⚠️ Honest disclaimer up front: this tool does not bypass Ryanair's login, does not work without a booking you have already checked in for, and does not audit what the Ryanair app collects or tracks. It reads your own pass with your own session. The app-only rule lives in the app's interface; I could not find anything on the server that enforces it. Ryanair can change that whenever it likes, and using this may sit badly with its terms. That part is yours to weigh.
 
-## What I actually got, and what it was supposed to mean
+Every finding here was reproduced against the real API with a real booking before it was written down. See [`docs/technical-writeup.md`](docs/technical-writeup.md) for the evidence, tagged by confidence level, and [How this was built](#how-this-was-built) for what that verification actually involved.
 
-I'd checked in online. Account logged in, phone charged, nothing wrong on my end. At the gate the app wouldn't load over bad airport wifi, and this is what Ryanair's own screen tells you in that situation:
+## The story
+
+In October 2024 Ryanair's CEO Michael O'Leary announced that paper boarding passes were finished. The deadline slipped twice, and on 12 November 2025 Ryanair went fully digital. Skip online check-in and the airport counter charges £30 to £55. Check in online and your phone dies, and the counter prints a pass for free. O'Leary's stated reasons are anti-fraud, smoother rebooking in a disruption, and lower airport costs.
+
+Two days after the rule went live, Portugal's civil aviation regulator told Ryanair it could not fine a passenger who had checked in online but had no app. The EU passed a law in July 2026 that bans this kind of requirement, effective October 2027, and it does not cover flights leaving the UK. Until then, Ryanair enforces the rule through its own app.
+
+I checked in online, my phone was charged, and the app would not load over the airport wifi. This is what Ryanair's own screen told me:
 
 > **You need the Ryanair App to access your digital boarding pass.** You must download the Ryanair App. This is the only way to access your digital boarding pass, paper boarding passes are no longer issued or accepted.
 
-That statement isn't true. Ryanair's own policy gives a passenger whose phone dies after online check-in a free paper pass at the counter. The screen is stricter than the actual rule, which told me the boarding pass clearly exists as retrievable data before the app ever renders it. I went looking for where that data lives and what, if anything, actually gates access to it.
+It is not the only way, and Ryanair's own free paper pass at the counter proves it. So I took the app apart to find out what actually guards the pass. Nothing on the server does. This repo shows that and ships the tools.
 
-## Michael O'Leary's idea
+## What the boarding pass really is
 
-The app-only rule is one man's fixation. Ryanair's CEO Michael O'Leary announced in October 2024 that paper boarding passes were finished, floated the deadline, let it slip twice, and finally pushed the airline fully digital on 12 November 2025. He has spent years telling anyone who'll listen that the app is the future and the printout is dead weight, and he built the policy to match: skip online check-in and it's £30 to £55 at the counter, though a dead phone after online check-in still gets a free paper replacement. The stated reasons are a tidy mix of anti-fraud, smoother rebooking during disruptions, and, in his own framing, lower airport costs and cheaper fares.
-
-Not everyone bought it. Two days after the rule went live, Portugal's civil aviation regulator told Ryanair it couldn't fine a passenger who checked in online but didn't have the app. The EU passed a law in July 2026 that will ban this kind of app requirement outright, but it doesn't take effect until October 2027 and won't apply to flights leaving the UK at all. Until then, whether you need the app is a decision Ryanair enforces through its own interface, not through anything written into the boarding-pass service itself.
-
-## What's technically going on
-
-Ryanair's backend is split across subdomains. The general app API, check-in, the kiosk service, and boarding-pass issuance all live on different hosts, separate from `www.ryanair.com`, the site people actually check in on:
+The pass is an IATA Resolution 792 BCBP string, the same format every airline prints. Ryanair serves it from a dedicated host (`mntappbp.ryanair.com`) that the public website is never wired to, and the app draws it as an Aztec code.
 
 ```
-www.ryanair.com (web check-in)  ──╳── never wired to ──╳──  mntappbp.ryanair.com (boarding pass)
-        │                                                              ▲
-        └── nativeapps.ryanair.com (general app API) ─────────────────┘
-                 same login, same X-AUTH-TOKEN, different host
+Manage Trip page ── your cookie ──►  /api/usrprof/v2/accounts/{id}/sessionToken  ──►  X-AUTH-TOKEN
+Manage Trip page ── same session ─►  /api/orders/v2/orders/{id}/trips/{trip}      ──►  bookingId
+mntappbp.ryanair.com  ◄── POST /v1/boardingpasses {CustomerId, BookingIds:[int]} ──  BCBP string  ──►  Aztec PNG
 ```
 
-`ApiBuildConfiguration`, the class that hands every API client its base URL, confirms it: boarding-pass issuance is wired to `mntappbp.ryanair.com`, and the website's code never calls it. There's no flag that says "deny web clients." Nobody had to write one, because the website was never connected to this part of the backend in the first place. I confirmed it by calling the app's own endpoint directly, using an ordinary web-login token obtained the way any browser gets one. It worked without modification.
-
-The same `X-AUTH-TOKEN` the app uses works from outside the app, and the endpoint doesn't check for anything beyond that header. I sent a device fingerprint made of random bytes, with no attestation token of any kind, and the server returned a complete boarding pass anyway. Whatever app-integrity checks exist elsewhere in Ryanair's code, this endpoint doesn't call them.
-
-One detail cost real debugging time: the `BookingIds` field must be a JSON integer, not a string. Sent as a string it returns a 403 that looks exactly like an auth failure and isn't one.
-
-## What the barcode actually contains
-
-The PNG these tools produce isn't a Ryanair invention. It encodes IATA Resolution 792, the boarding-pass barcode standard every airline uses. I took a real string from a live response and sliced it byte by byte rather than trusting the spec. The example below is fabricated; the layout is what I verified against a real pass:
+The fields sit at fixed byte offsets. I sliced a real string by hand to confirm the layout; this example is fabricated:
 
 ```
 M1DOE/JOHN             XYZ123 STNDUBFR 1234 001Y001A0001 149>5181W 6305BFR 0000000000000000000000000000 0                          NN
 ```
 
-| Bytes | Field | Value | Meaning |
-|---|---|---|---|
-| 0:1 | Format code | `M` | always `M` for this standard |
-| 1:2 | Legs encoded | `1` | one flight segment |
-| 2:22 | Name | `DOE/JOHN` | `LAST/FIRST`, padded to 20 |
-| 23:30 | Booking reference | `XYZ123 ` | the PNR, padded to 7 |
-| 30:33 | Origin | `STN` | London Stansted |
-| 33:36 | Destination | `DUB` | Dublin |
-| 36:39 | Operating carrier | `FR ` | Ryanair |
-| 39:44 | Flight number | `1234 ` | |
-| 44:47 | Julian date | `001` | day 1 of the year |
-| 47:48 | Compartment | `Y` | economy |
-| 48:52 | Seat | `001A` | |
-| 52:57 | Sequence number | `0001 ` | boarding order |
-| 57:58 | Passenger status | `1` | checked in |
+Name is bytes 2 to 22, the booking reference 23 to 30, origin and destination 30 to 36, flight number 39 to 44, Julian date 44 to 47, seat 48 to 52. The Julian date decodes to the flight's real departure date, and a declared length field matches the conditional data to the character, so an offset wrong by one byte would break both. Full table in the write-up.
 
-Two internal checks confirm the offsets are exact, not approximate. The Julian date decodes to a calendar day that matches the flight's departure date elsewhere in the same response, and a declared length field says how many bytes of conditional data follow, which the string then matches to the character. Miss by one byte and neither lines up. The full breakdown is in [`docs/technical-writeup.md`](docs/technical-writeup.md), and [shooshx/BoardingBarcode](https://shooshx.github.io/BoardingBarcode/) builds one in the browser if you want a feel for the format.
+## Quick start
 
-## Using this
+Chrome extension, the easy path. Open `chrome://extensions`, turn on Developer mode, click **Load unpacked**, pick the `extension/` folder.
 
-The Chrome extension is the easiest path. Open `chrome://extensions`, turn on Developer mode, click **Load unpacked**, and select the `extension/` folder. Log in to [ryanair.com](https://www.ryanair.com), open **Manage Trip** for a booking you've checked in for, and click the toolbar icon once. It reads your session, refreshes a token the way the site does, and saves a scannable PNG. Details in [`extension/README.md`](extension/README.md).
+```
+1. Log in to https://www.ryanair.com
+2. Open Manage Trip on a booking you have already checked in for
+3. Click the toolbar icon once
+   -> a scannable PNG named PNR_DEPARR_DATE.png downloads
+```
 
-For scripting, `tools/client.py` does the same from the command line:
+Python, for scripting:
 
 ```bash
 pip install playwright && playwright install chromium
 python tools/client.py --cookie-file cookie.txt --customer-id <id> --pnr ABC123 --email you@example.com --png
 ```
 
-The session cookie expires quickly. On a 401, recapture it from DevTools, under the Network tab, on any request to `ryanair.com`.
+The session cookie expires fast. On a 401, recapture it from DevTools, Network tab, any request to `ryanair.com`. Never commit it; the `.gitignore` already excludes it.
 
-## Why Ryanair would actually do this
+## What each part does
 
-My read, not something the code confirms. O'Leary's stated reasons, anti-fraud and rebooking and lower cost, are plausible and don't require banning the pass outside the app. Web check-in already produces the data; Ryanair chose not to render it anywhere else. A hard rule enforced entirely by the app's screen is the cheapest kind to build, because the server needs no changes. It also forces an install right before a flight, where the app sells seats, bags and priority far better than a browser tab you close after one visit, and where every download is one less paper pass to print. The restriction was never backed by anything the server checks. That's exactly why these tools work.
+| Path | Purpose | Calls Ryanair? |
+|---|---|---|
+| `extension/` | One click on a Manage Trip page produces the boarding-pass PNG | Yes, with your session |
+| `tools/client.py` | Same flow from the command line, prints JSON or saves a PNG | Yes, with your cookie or token |
+| `tools/bp_render.py` | Renders a barcode string as an Aztec PNG | No |
+| `docs/technical-writeup.md` | The decompile evidence, request shapes, byte-level barcode breakdown | None |
+| `apk/ryanair-3.243.0.apk` | The exact build I decompiled | None |
 
-## Scope and limits
+## What I proved (and what doesn't work)
 
-This answers one question: is the app-only requirement a technical gate, or just where Ryanair chose to put the door. It's the door. It does not audit what the app collects or tracks, and makes no claim about that. Whether using these tools breaks Ryanair's terms is yours to weigh. Cookies expire fast and Ryanair can rewire any of this at any time; everything here reflects the API as it behaved in late 2026, against `apk/ryanair-3.243.0.apk`.
+- The pass is plain data behind an API call. A web-login token fetches it from `mntappbp.ryanair.com` with no app involved. `[LIVE]`
+- The website was never wired to that host. `ApiBuildConfiguration` gives boarding passes their own subdomain and the site never calls it. There is no "deny web clients" check to find, because nobody wrote one. `[STATIC]`
+- Device attestation is not checked on this endpoint. A fingerprint made of random bytes and no integrity token still returns a valid pass. `[LIVE]`
+- The barcode is standard IATA BCBP. I verified the field offsets against a real string with two independent checks. `[LIVE]`
+- `BookingIds` must be a JSON integer. Send a string and you get a 403 that looks exactly like an auth failure and is not one. `[LIVE]`
+- The `ryanair:jwt` value in `sessionStorage` is a different token from the `X-AUTH-TOKEN`. The real one comes from the `sessionToken` endpoint. `[LIVE]`
+- I only tested checked-in bookings, on the Android API shape, on my own account. iOS and other airlines' apps are untested.
+- Ryanair already knows every pass it issued, and this does not change what it holds.
 
-Static analysis was done with [JADX](https://github.com/skylot/jadx) against `apk/ryanair-3.243.0.apk` (`com.ryanair.cheapflights`, 3.243.0). Every live claim was fired at the real API against a real booking before I wrote it down.
+## Trade-offs
+
+The requests present themselves as the Android app 3.243.0 (`client: android`, a random device fingerprint), because that is the shape the endpoint expects. They still use your own login, but the imitation is the part Ryanair is most likely to dislike. The extension runs unpacked in developer mode, and the Python path needs your session cookie on disk, so treat both with the care you would give a password. If Ryanair rewires the website to that host or starts checking attestation, this stops working.
+
+## Docs
+
+- [`docs/technical-writeup.md`](docs/technical-writeup.md): the full chain, host split, request shapes, auth mechanics and byte-level barcode breakdown, every claim tagged `[STATIC]`, `[LIVE]` or `[STATIC + LIVE]`.
+- [`extension/README.md`](extension/README.md): load and use the extension.
+
+## How this was built
+
+Static analysis was done with [JADX](https://github.com/skylot/jadx) against `apk/ryanair-3.243.0.apk` (`com.ryanair.cheapflights`, version 3.243.0): the base-URL config, the Retrofit services, the auth interceptor and the manifest.
+
+- The decompile told me where to look and what the endpoints expected. It could not tell me what the server actually checks.
+- I ran every test myself, against my own booking. Every live claim above was fired at the real API from my own account before I wrote it down.
+- Several of my first guesses were wrong until tested. I assumed the `sessionStorage` JWT was the auth token (it is not). I sent `BookingIds` as strings (403). I called the boarding-pass host from the extension's page script and hit a CORS failure, which is why that one request now goes through the background worker.
+- What I did not test, I do not claim. The write-up says which build and which path each finding comes from, and a claim with no tag is weaker.
+
+If a claim here does not hold on your account, open an issue with the app version and what you saw.
+
+## Credits
+
+- Static analysis: [JADX](https://github.com/skylot/jadx).
+- Barcode layout reference: [shooshx/BoardingBarcode](https://shooshx.github.io/BoardingBarcode/).
+- Barcode rendering: [bwip-js](https://github.com/metafloor/bwip-js).
+- Policy timeline: [Pixidia's Ryanair digital boarding pass guide](https://pixidia.com/en/ryanair-digital-boarding-pass-guide-2026/).
+
+## License
+
+MIT. Privacy-oriented tooling for your own bookings. Use it on accounts you own.
