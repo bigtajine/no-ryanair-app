@@ -4,19 +4,19 @@ Fetch the boarding pass Ryanair says only exists inside its app. It is an ordina
 
 > ⚠️ Honest disclaimer up front: this tool does not bypass Ryanair's login, does not work without a booking you have already checked in for, and does not audit what the Ryanair app collects or tracks. It reads your own pass with your own session. The app-only rule lives in the app's interface; I could not find anything on the server that enforces it. Ryanair can change that whenever it likes, and using this may sit badly with its terms. That part is yours to weigh.
 
-Every finding here was reproduced against the real API with a real booking before it was written down. See [`docs/technical-writeup.md`](docs/technical-writeup.md) for the evidence, tagged by confidence level, and [How this was built](#how-this-was-built) for what that verification actually involved.
+I reproduced every finding here against the real API with a real booking before writing it down. See [`docs/technical-writeup.md`](docs/technical-writeup.md) for the evidence, tagged by confidence level, and [How this was built](#how-this-was-built) for what that verification involved.
 
 ## The story
 
-In October 2024 Ryanair's CEO Michael O'Leary announced that paper boarding passes were finished. The deadline slipped twice, and on 12 November 2025 Ryanair went fully digital. Skip online check-in and the airport counter charges £30 to £55. Check in online and your phone dies, and the counter prints a pass for free. O'Leary's stated reasons are anti-fraud, smoother rebooking in a disruption, and lower airport costs.
+In October 2024 Ryanair's CEO Michael O'Leary announced that paper boarding passes were finished. The deadline slipped twice, and on 12 November 2025 Ryanair went fully digital. Skip online check-in and the airport counter charges £30 to £55. Check in online and your phone dies, and the counter prints a pass for free. Ryanair's stated reasons are anti-fraud, smoother rebooking in a disruption, and lower airport costs.
 
 Two days after the rule went live, Portugal's civil aviation regulator told Ryanair it could not fine a passenger who had checked in online but had no app. The EU passed a law in July 2026 that bans this kind of requirement, effective October 2027, and it does not cover flights leaving the UK. Until then, Ryanair enforces the rule through its own app.
 
-I checked in online, my phone was charged, and the app would not load over the airport wifi. This is what Ryanair's own screen told me:
+I checked in online and got annoyed that I was effectively being forced to use their app, and that annoyance started this project. This is what Ryanair's own screen told me:
 
 > **You need the Ryanair App to access your digital boarding pass.** You must download the Ryanair App. This is the only way to access your digital boarding pass, paper boarding passes are no longer issued or accepted.
 
-It is not the only way, and Ryanair's own free paper pass at the counter proves it. So I took the app apart to find out what actually guards the pass. Nothing on the server does. This repo shows that and ships the tools.
+It is not the only way, and Ryanair's own free paper pass at the counter proves it. So I took the app apart to find out what guards the pass. Nothing on the server does. This repo shows that and ships the tools.
 
 ## What the boarding pass really is
 
@@ -28,7 +28,7 @@ Manage Trip page ── same session ─►  /api/orders/v2/orders/{id}/trips/{t
 mntappbp.ryanair.com  ◄── POST /v1/boardingpasses {CustomerId, BookingIds:[int]} ──  BCBP string  ──►  Aztec PNG
 ```
 
-The fields sit at fixed byte offsets. I sliced a real string by hand to confirm the layout; this example is fabricated:
+The fields sit at fixed byte offsets. I sliced a real string byte by byte to confirm the layout; this example is fabricated:
 
 ```
 M1DOE/JOHN             XYZ123 STNDUBFR 1234 001Y001A0001 149>5181W 6305BFR 0000000000000000000000000000 0                          NN
@@ -88,10 +88,10 @@ The requests present themselves as the Android app 3.243.0 (`client: android`, a
 
 ## How this was built
 
-Static analysis was done with [JADX](https://github.com/skylot/jadx) against `apk/ryanair-3.243.0.apk` (`com.ryanair.cheapflights`, version 3.243.0): the base-URL config, the Retrofit services, the auth interceptor and the manifest.
+I did the static analysis with [JADX](https://github.com/skylot/jadx) against `apk/ryanair-3.243.0.apk` (`com.ryanair.cheapflights`, version 3.243.0): the base-URL config, the Retrofit services, the auth interceptor and the manifest.
 
-- The decompile told me where to look and what the endpoints expected. It could not tell me what the server actually checks.
-- I ran every test myself, against my own booking. Every live claim above was fired at the real API from my own account before I wrote it down.
+- The decompile told me where to look and what the endpoints expected. It could not tell me what the server checks.
+- I ran every test myself, against my own booking and account.
 - Several of my first guesses were wrong until tested. I assumed the `sessionStorage` JWT was the auth token (it is not). I sent `BookingIds` as strings (403). I called the boarding-pass host from the extension's page script and hit a CORS failure, which is why that one request now goes through the background worker.
 - What I did not test, I do not claim. The write-up says which build and which path each finding comes from, and a claim with no tag is weaker.
 
