@@ -1,8 +1,6 @@
-"""
-Boarding-pass client — same REST surface as the Android app (see docs/technical-writeup.md).
+"""Fetch a boarding pass from the Ryanair app API with your own X-AUTH-TOKEN or browser cookie.
 
-Uses your own X-AUTH-TOKEN or browser cookie. No cert pinning on this host in the APK;
-the product gate is that ryanair.com never calls mntappbp.ryanair.com.
+See docs/technical-writeup.md for how the API was found.
 """
 import argparse
 import hashlib
@@ -15,7 +13,7 @@ BASE = "https://mntappbp.ryanair.com"
 USRPROF = "https://www.ryanair.com/api/usrprof/v2/accounts"
 APP_VERSION = "3.243.0"
 
-# Any stable SHA1 hex works as the device ID; server doesn't validate it.
+# The server accepts any SHA1 hex as the device ID.
 _DEVICE_FINGERPRINT = hashlib.sha1(b"ryanair-client-00000001").hexdigest()
 
 

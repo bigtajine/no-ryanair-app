@@ -1,7 +1,7 @@
 "use strict";
 
-// Same-origin fetches run here (cookies, no CORS). The cross-origin
-// boarding-pass call is delegated to background.js instead.
+// Same-origin fetches run here because they need the page's cookies.
+// The cross-origin boarding-pass call goes through background.js.
 
 async function fingerprint() {
   const { fp } = await chrome.storage.local.get("fp");
@@ -17,7 +17,7 @@ async function getToken(cid) {
     credentials: "include",
     headers: { "Accept": "application/json", "client": "desktop", "client-version": "0.162.0 (desktop)" }
   });
-  if (!tr.ok) throw new Error(`sessionToken ${tr.status} — log in to ryanair.com first`);
+  if (!tr.ok) throw new Error(`sessionToken ${tr.status}: log in to ryanair.com first`);
   return (await tr.json()).token;
 }
 
@@ -60,7 +60,7 @@ function renderDataUrl(barcode) {
 async function run() {
   const { cid, bookingId } = await resolveTrip();
   const fp = await fingerprint();
-  const token = await getToken(cid); // fresh — tokens are short-lived
+  const token = await getToken(cid); // fresh: tokens are short-lived
   const bp = await chrome.runtime.sendMessage({
     type: "fetchBoardingPass",
     cid, bookingId, token, fp

@@ -1,10 +1,7 @@
-"""
-Render just the boarding-pass barcode (Aztec, same symbology the app scans)
-to a PNG named <PNR>_<DEPARR>_<DATE>.png, e.g. XYZ123_STNDUB_20260101.png.
+"""Render a boarding-pass barcode as an Aztec PNG named <PNR>_<DEPARR>_<DATE>.png,
+e.g. XYZ123_STNDUB_20260101.png.
 
-Requires:
-    pip install playwright
-    playwright install chromium
+Needs: pip install playwright && playwright install chromium
 """
 import json, pathlib
 

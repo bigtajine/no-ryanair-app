@@ -8,7 +8,7 @@ function badge(text, color) {
   if (color) chrome.action.setBadgeBackgroundColor({ color });
 }
 
-// Only background bypasses CORS, via host_permissions.
+// Only this worker is exempt from CORS here, via host_permissions.
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg?.type !== "fetchBoardingPass") return;
   (async () => {

@@ -21,3 +21,4 @@ extension/_metadata/
 # .crx signing key, never commit
 *.pem
 *.crx
+extension/get-my-boarding-pass-v1.0.0.zip

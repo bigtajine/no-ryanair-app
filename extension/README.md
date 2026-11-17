@@ -1,9 +1,7 @@
 # Chrome extension
 
-Unpacked load: `chrome://extensions` → Developer mode → Load unpacked → this folder.
+Install: `chrome://extensions` → Developer mode → Load unpacked → this folder.
 
-Open [ryanair.com](https://www.ryanair.com) Manage Trip while logged in, click the toolbar
-action. It refreshes your web session token, calls `mntappbp.ryanair.com`, and downloads an
-Aztec PNG of your boarding pass.
+Log in to ryanair.com, open Manage Trip on a checked-in booking, click the toolbar icon. It refreshes your web session token, calls `mntappbp.ryanair.com`, and downloads the boarding pass as an Aztec PNG.
 
-Uses your existing login only. Same disclaimer as the repo root `README.md`.
+Your existing login only. Root `README.md` disclaimer applies.
