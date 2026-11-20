@@ -2,7 +2,7 @@
 
 Claim tags:
 
-- `[STATIC]`: from `apk/ryanair-3.243.0.apk` (v3.243.0), decompiled with JADX. No network.
+- `[STATIC]`: from `apk/ryanair-3.243.0.apk` (v3.243.0), decompiled with JADX.
 - `[LIVE]`: reproduced against the real API on a real account. See `tools/client.py`.
 
 ## 1. Boarding passes have their own backend `[STATIC]`
