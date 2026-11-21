@@ -34,6 +34,14 @@ pip install playwright && playwright install chromium
 python tools/client.py --cookie-file cookie.txt --customer-id <id> --pnr ABC123 --email you@example.com --png
 ​```
 
+`--customer-id` is your myRyanair account ID. Log in at ryanair.com, open DevTools, and run this in the Console:
+
+```js
+sessionStorage.getItem("myRyanairID")
+```
+
+It's also in the URL of the `/api/usrprof/v2/accounts/<id>/...` requests on the Network tab. The extension reads it from `sessionStorage` itself, so only the CLI needs it passed in.
+
 ## Layout
 
 | Path | What |

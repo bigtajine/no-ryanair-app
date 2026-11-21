@@ -95,7 +95,7 @@ Body:   {"RecordLocator": "<PNR>", "Email": "<account email>"}
 
 POST https://mntappbp.ryanair.com/v1/boardingpasses
 Headers: (same as above)
-Body:   {"CustomerId": "<myRyanair customer id>", "BookingIds": [<bookingId as INTEGER>]}
+Body:   {"CustomerId": "<myRyanair customer id, from sessionStorage \"myRyanairID\" after login>", "BookingIds": [<bookingId as INTEGER>]}
 ->      [BoardingPassDto, ...]
 ```
 
